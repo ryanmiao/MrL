@@ -1,0 +1,514 @@
+package BotModules::S3helper;
+use vars qw(@ISA);
+@ISA = qw(BotModules);
+use Time::Format qw(%time);
+use AnyDBM_File;
+use Fcntl;
+use Net::OpenSSH;
+use threads;
+1;
+
+sub Help {
+    my $self = shift;
+    my ($event) = @_;
+    return {
+        '' => 'S3 helper',
+        'machine' => 'check machine inforation',
+        'name' => 'check name inforation',
+    };
+}
+
+# TODO
+# 1. redmine quring support.
+# 2. SMS capability is good for us. Also maybe Weibo, twitter, etc.
+
+# bugs
+# 1. XXX
+
+our %machine;
+# machine table:
+# host_name;user;pre_user;candidate_ip;ip;os;cur_os
+#   candidate_ip: total_num/ip1/ip2/...
+#   ip: total_num/ip1/ip2/...
+#   os: total_num/os1/os2/...
+#     os1: rhelx.x/sdax
+my $HOST_NAME=0; my $USER=1; my $PRE_USER=2; my $C_IP=3; my $IP=4; my $OS=5; my $CUR_OS=6;
+
+our %name;
+# name table :
+# name;score;birthday;tel
+#   tel: total_num/tel1/tel2/tel3/...
+my $NAME=0; my $SCORE=1; my $BIRTHDAY=2; my $TEL=3;
+
+dbmopen(%machine, "machine", 0666);
+dbmopen(%name, "name", 0666);
+
+my $home = $ENV{'HOME'};
+my $machine_flag = 0;
+my $name_flag = 0;
+
+our $format;
+$time{$format};
+
+sub S3timer {
+    while (1) {
+        sleep 1200;
+        print "============================begin\n";
+        if ($time{'hh'} < 22 and $time{'hh'} > 8) {
+            set_machine(\%machine);
+        }
+        print "============================done\n";
+    }
+}
+
+# since AnyDBM lacks exist function, we must create it
+# exist(\%db, $key)
+# return: 1 exist; 0 non-exist.
+sub exist {
+    my $db = shift;
+    my $key = shift;
+    my $ret = 0;
+    foreach my $k (sort keys %$db) {
+        if ($k eq $key) {
+            $ret = 1;
+            last;
+        }
+    }
+    return $ret;
+}
+
+# fuzzy find
+sub exist_fuzzy {
+    my $db = shift;
+    my $key = shift;
+    my $ret = "";
+    my $num = 0;
+    foreach my $k (sort keys %$db) {
+        if (uc($k) =~ uc($key)) {
+            $num ++;
+            $ret = $k;
+        }
+    }
+    if ($num > 1) {
+        $ret = "";
+    }
+    return $ret;
+}
+
+# set(\%db, $key, $pos, $str)
+sub set {
+    my $db = shift;
+    my $key = shift;
+    my $pos = shift;
+    my $str = shift;
+    if (exist($db, $key)) {
+       my @val = split(';', $db->{$key});
+       $val[$pos] = $str;
+       $db->{$key} = join(';', @val);
+    }
+}
+
+# get(\%db, $key, $pos)
+sub get {
+    my $db = shift;
+    my $key = shift;
+    my $pos = shift;
+    my $ret = "";
+    if (exist($db, $key)) {
+        my @val = split(';', $db->{$key});
+        $ret = $val[$pos];
+    }
+    return $ret;
+}
+
+
+#############################machine##############################################
+sub update_machine {
+    set_machine(\%machine);
+}
+
+my $t = threads->create({'exit'=>'thread_only'}, \&S3timer);
+
+sub os_prober_sanity {
+    my $ip = shift;
+    open (FILE, "<$home/.ssh/known_hosts");
+
+    my $strtmp = "";
+    while (<FILE>) {
+        if (/^$ip(.*)$/) {
+            $_ = "";
+            $_ =~ s/^\s+$//;
+        }
+        $strtmp = $strtmp.$_;
+    }
+
+    open(FILE, ">$home/.ssh/known_hosts");
+    print FILE $strtmp;
+    close FILE;
+}
+
+sub os_prober {
+    my ($trunk, $name, $host, $user, $pass, $prober) = @_;
+    my $ret = 0;
+    # sanity check
+    # blablabla
+    print "===2 $host===\n";
+
+    # look, here we will call the external commands
+    # or we will modify local files(known_hosts), so 
+    # we have to turn off tainting check. 
+    # (perl start without -T).
+    #os_prober_sanity($host);
+    my $linum = `sed -n "/$host/=" $home/.ssh/known_hosts`;
+    chop $linum;
+    if ($linum) {
+        `sed -i "$linum d" $home/.ssh/known_hosts`;
+    }
+
+    `ping -c 1 $host`;
+    $ret = $?;
+    if ($ret != 0) {
+        $trunk->{'sda'} = "timeout";
+        print "ping $host $name time out\n";
+        return $ret;
+    }
+
+    print "===2===\n";
+    my $ssh = Net::OpenSSH->new($host, user=>$user, password=>$pass, strict_mode=>0, master_opts => [-o => "StrictHostKeyChecking=no"]);
+    print "===3===\n";
+    $ssh->scp_put($prober, "/tmp");
+    $ssh->capture("/tmp/bootinfoscript");
+    $ssh->scp_put("$home/software/bootinfoscript-code/bootinfoscript", "/tmp");
+    $ssh->capture("/tmp/bootinfoscript");
+    $ssh->scp_get("/tmp/RESULTS.txt", "/tmp/RESULTS.txt");
+    $ssh->capture("rm -f /tmp/RESULTS*.txt");
+    $ssh->capture("rm -rf /tmp/BootInfo-*");
+    my $stdout = `cat /tmp/RESULTS.txt`;
+    print "===4===\n";
+    my $result = $stdout;
+    my $par;
+    do {
+        if ($result =~ m/(\w+)\: __________________________________________________________________________\n\n(.*)/si) {
+            $par = $1;
+            #print $1, "\n";
+            $result = $2;
+            $result =~ m/(.+?)\: __________________________________________________________________________\n\n(.*)/si;
+            my $str = $1;
+            if ($str =~ m/Operating System\:  (.*)/) {
+                if (length $1 > 0) {
+                    $1 =~ /(.*)([0-9].[0-9])(.*)/;
+                    #print " pushing rhel$2\n";
+                    print "===5===\n";
+                    $trunk->{$par} = "rhel".$2;
+                }
+            }
+        } else {
+            $par = undef;
+        }
+    } while (defined($par));
+    print "===6===\n";
+    if (scalar keys %$trunk == 0) {
+        $trunk->{'lvm'} = "*******";
+    }
+
+    return $ret;
+}
+
+sub set_machine {
+    my $db = shift;
+    my %os_list;
+    foreach my $m (sort keys %$db) {
+        print "===1===\n";
+        my $user = get_machine_user($m);
+        my @ips = ();
+        my $ip_num = get_machine_ip($m, \@ips);
+        my $ip = @ips[$ip_num - 1];
+        if ($ip and os_prober(\%os_list, $m, $ip, "root", "redhat", "$home/software/bootinfoscript-code/bootinfoscript")) {
+            # time out
+            print "ping $m $ip time out\n";
+        }
+        print "$m: ", scalar keys %os_list, "\n";
+        my $ans = scalar keys %os_list;
+        while ((my $k, my $v) = each %os_list) {
+            $ans = "$ans/$k=>$v";
+        }
+        print $ans, "\n";
+        set_machine_os($m, $ans);
+        %os_list = ();
+    }
+}
+
+# get_machine_ip($name, \@ips);
+sub get_machine_ip {
+    my $host_name = shift;
+    my $ips = shift;
+    my $str = "";
+    if (exist(\%machine, $host_name)) {
+        $str = get(\%machine, $host_name, $IP);
+    }
+    my $ip_num;
+    ($ip_num, @$ips) = split('/', $str);
+    return $ip_num;
+}
+
+sub dump_machine_ip {
+    my $db = \%machine;
+    my $ans = "";
+    my $count = 0;
+    foreach my $name (sort keys %$db) {
+        my @ips = ();
+        get_machine_ip($name, \@ips);
+        #(my $user, my $ip, my @os) = split(' ', $s->{$name});
+        $ans = "$ans $name [ " . join(' ', @ips) . " ]";
+        $count ++;
+        if ($count % 3 == 0) {
+            $ans = "$ans\n";
+        }
+    }
+    return $ans;
+}
+
+# get_machine_os($name, \@oss);
+sub get_machine_os {
+    my $host_name = shift;
+    my $oss = shift;
+    my $str = "";
+    if (exist(\%machine, $host_name)) {
+        $str = get(\%machine, $host_name, $OS);
+    }
+    my $os_num;
+    ($os_num, @$oss) = split('/', $str);
+    return $os_num;
+}
+
+sub set_machine_os {
+    my $host_name = shift;
+    my $str = shift;
+    if (exist(\%machine, $host_name)) {
+        set(\%machine, $host_name, $OS, $str);
+    }
+}
+
+sub dump_machine_os {
+    my $db = \%machine;
+    my $ans = "";
+    my $count = 0;
+    foreach my $name (sort keys %$db) {
+        #(my $user, my $ip, my @os) = split(' ', $s->{$name});
+        my @oss = ();
+        get_machine_os($name, \@oss);
+        $ans = "$ans $name [ " . join(' ', @oss) . " ]";
+        $count ++;
+        if ($count % 3 == 0) {
+            $ans = "$ans\n";
+        }
+    }
+    return $ans;
+}
+
+sub get_machine_user {
+    my $host_name = shift;
+    my $str = "";
+    if (exist(\%machine, $host_name)) {
+        $str = get(\%machine, $host_name, $USER);
+    }
+    return $str;
+}
+
+sub set_machine_user {
+    my $host_name = shift;
+    my $str = shift;
+    if (exist(\%machine, $host_name)) {
+        set(\%machine, $host_name, $USER, $str);
+    }
+}
+
+
+
+###############################name###############################################
+sub name_add {
+    my $db = \%name;
+    my $name = shift;
+
+    if (!exist($db, $name)) {
+        my @val = ($name, 0, 'NULL', 'NULL', 'NULL', 'NULL');
+        $db->{$name} = join(';', @val);
+    }
+}
+
+sub name_del {
+    my $db = \%name;
+    my $name = shift;
+    if (exist($db, $name)) {
+        delete $db->{$name};
+    }
+}
+
+sub name_list {
+    my $db = \%name;
+    my $str = "";
+
+    foreach my $key (sort keys %$db) {
+        $str = "$str ". get($db, $key, $NAME);
+    }
+
+    return $str;
+}
+
+sub score_dump {
+    my $db = \%name;
+    my $str = "";
+
+    foreach my $key (sort keys %$db) {
+        $str = "$str $key(". get($db, $key, $SCORE).")";
+    }
+
+    return $str;
+}
+
+##################################################################################
+sub Heard {
+    my $self = shift;
+    my ($event, $message) = @_;
+    my $user = $event->{'from'};
+
+    if ($message =~ /(\w+)(\+\+|(|,|:|\.)(.+?)thank)(.*)$/osi) {
+        my $str = exist_fuzzy(\%name, $1);
+        if ($str and $str ne $user) {
+            print "found positive energy\n";
+            my $score = get(\%name, $str, $SCORE);
+            $score++;
+            set(\%name, $str, $SCORE, $score);
+            print "set $str score : $score\n";
+        }
+    }
+
+    return $self->SUPER::Heard(@_);
+}
+
+sub Told {
+    my $self = shift;
+    my ($event, $message) = @_;
+    my $now = $event->{'time'};
+    $self->{'_lastSpoken'}->{$event->{'user'}} = $now;
+    my $me = quotemeta($event->{'bot'}->nick);
+    my $expandedme = join('+', split(//gos, $me)).'+';
+
+    if ($message =~ m/^\s*machine(.*)/si) {
+        my $str = $1;
+        my $ans = "";
+        if ($str =~ m/^\s*list\s*$/si) {
+            $ans = dump_machine_ip();
+            $self->say($event, "$event->{'from'}: machine list:\n$ans");
+        }
+        elsif ($str =~ m/^\s*os\s*$/si) {
+            $ans = dump_machine_os();
+            $self->say($event, "$event->{'from'}: machine os:\n$ans");
+        }
+        else {
+            $self->say($event, "$event->{'from'}: I don't know");
+        }
+        
+    }
+    elsif ($message =~ m/^\s*name(.*)/si) {
+        my $str = $1;
+        my $ans = "";
+        if ($str =~ m/^\s*list\s*$/si) {
+            $ans = name_list();
+            $self->say($event, "$event->{'from'}: name list:\n$ans");
+        }
+        elsif ($str =~ m/^\s*del\s*(.*)$/si) {
+            $ans = $1;
+            if ($ans) {
+                my @tmp = split(' ', $ans);
+                foreach my $entry (@tmp) {
+                    if ($entry =~ /\w+/ and $entry !~ /[0-9]/) { # get a name
+                        name_del($entry);
+                        $self->say($event, "$event->{'from'}: name del $entry");
+                    }
+                }
+            }
+        }
+        elsif ($str =~ m/^\s*add\s*(.*)$/si) {
+            $ans = $1;
+            if ($ans) {
+                my @tmp = split(' ', $ans);
+                foreach my $entry (@tmp) {
+                    if ($entry =~ /\w+/ and $entry !~ /[0-9]/) { # get a name
+                        name_add($entry);
+                        $self->say($event, "$event->{'from'}: name add $entry");
+                    }
+                }
+            }
+        }
+        else {
+            $self->say($event, "$event->{'from'}: I don't know about \'$message\'");
+        }
+    }
+    elsif ($message =~ /^(\s*)(\w+)\s*$/osi) { # catch single word
+        my $word = $2;
+        my $ans = "";
+        if ($word eq "score") {
+            $ans = score_dump();
+            if ($ans) {
+                $self->say($event, "$ans");
+            } 
+            else {
+                return $self->SUPER::Told(@_);
+            }
+        }
+        else {
+            $ans = get_machine_user($word);
+            if ($ans) {
+                $self->say($event, "$event->{'from'} $word is used by $ans");
+            } 
+            else {
+                return $self->SUPER::Told(@_);
+            }
+        }
+    }
+#    elsif ($message =~ /^(\s*)(\w+)\+\+\s*$/osi) {
+#        my $word = $2;
+#
+#        if (exist(\%name, $word)) {
+#            my $score = get(\%name, $word, $SCORE);
+#            $score++;
+#            set(\%name, $word, $SCORE, $score);
+#            print "set $word score : $score\n";
+#        }
+#    }
+#    elsif ($message =~ /^(\s*)(\w+)\-\-\s*$/osi) {
+#        my $word = $2;
+#
+#        if (exist(\%name, $word)) {
+#            my $score = get(\%name, $word, $SCORE);
+#            $score--;
+#            set(\%name, $word, $SCORE, $score);
+#            print "set $word score : $score\n";
+#        }
+#    }
+    elsif ($message =~ /^\s*(|no)\s*(|[,.:;*|])\s*(\w+)\s*(|\s*is\s*used\s*by\s*)(\w+)\s*$/osi) { # catch "no blabla"
+        if ($3 and $5) {
+            if (set_machine_user($3, $5)) {
+                $self->say($event, "$event->{'from'} ok");
+            }
+            #else {
+            #    $self->say($event, "$event->{'from'} something maybe wrong");
+            #}
+        }
+        else {
+            $self->say($event, "$event->{'from'} hey, dude, you should let me know who and what!");
+        }
+    }
+    else {
+        return $self->SUPER::Told(@_);
+    }
+    return 0;
+}
+
+sub Unload {
+    # just to make sure...
+    dbmclose(%machine);
+    dbmclose(%name);
+    $t->join();
+}
