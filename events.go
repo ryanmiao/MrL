@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"fmt"
 )
 
 // Events are built from the output of the IRC server, and are sent to modules
@@ -22,6 +23,7 @@ var re_event_quit = regexp.MustCompile("^:([^!]+)![^ ]* QUIT :(.*)")
 var re_event_nick = regexp.MustCompile("^:([^!]+)![^ ]* NICK :(.*)")
 
 func ExtractEvent(line string) *Event {
+	fmt.Println("####ExtractEvent : ", line)
 	if m := re_server_notice.FindStringSubmatch(line); len(m) == 2 {
 		return newEventNOTICE(line, m[1], 0)
 	}
@@ -107,6 +109,9 @@ func newEventPRIVMSG(line string, user string, channel string, msg string) *Even
 		event.Channel = channel
 	}
 	event.User = user
+	fmt.Println("event.User is ", user)
+	fmt.Println("event.Data is ", msg)
+	fmt.Println("event.Channel is ", channel)
 	return event
 }
 

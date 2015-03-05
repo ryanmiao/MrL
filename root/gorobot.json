@@ -9,24 +9,17 @@
 	    "Name": "freenode",
 	    "Host": "irc.freenode.net:6667",
 	    "FloodControl": true,
-	    "Nickname": "m1sh3l",
-	    "Realname": "m1sh3l",
-	    "Username": "m1sh3l",
+	    "Nickname": "mrl",
+	    "Realname": "mrl",
+	    "Username": "mrl",
 	    "Password": "",
 	    "Channels": {
-		"##sbrk": {
-		    "Name": "##m1ch3l-dev",
+		"#mrl": {
+		    "Name": "#mrl",
 		    "Password": "",
 		    "Master": true
 		}
 	    }
-	}
-    },
-    "Broadcast": {
-	"Targets": {
-	    "freenode": [
-		"##m1ch3l-dev"
-	    ]
 	}
     },
     "Scripts": {

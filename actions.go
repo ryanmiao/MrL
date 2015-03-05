@@ -3,6 +3,7 @@ package main
 import (
 	"regexp"
 	"strings"
+	"fmt"
 )
 
 var re_cmd_join = regexp.MustCompile("^JOIN ([^ ]+).*")
@@ -16,6 +17,7 @@ var re_cmd_privmsg_chan = regexp.MustCompile("^PRIVMSG ([^ ]+) :(.*)")
 // made to ensure that the bot is still aware of what's hapening even with
 // raw actions (ie: a raw action "QUIT" has to remove the server from the bot)
 func ExtractAction(raw_action *Action) *Action {
+	fmt.Println("raw_action is ", raw_action.Data)
 	if m := re_cmd_kick.FindStringSubmatch(raw_action.Data); len(m) == 4 {
 		return newActionKICK(&raw_action.Server, &m[1], &m[2], &m[3])
 	}

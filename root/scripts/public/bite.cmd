@@ -4,6 +4,7 @@ po=$1
 se=$2
 ch=$3
 us=$4
+da=$5
 
 size=$(echo "$RANDOM % 20 + 3" | bc)
 bite="B"
@@ -14,4 +15,4 @@ do
 done
 bite="${bite}D"
 
-echo "$se 1 PRIVMSG $ch :${us}> $bite" | nc -q 1 localhost $po
+echo "$se 1 PRIVMSG $ch :${us}> $bite $da" | nc 127.0.0.1 $po

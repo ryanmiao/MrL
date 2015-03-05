@@ -23,7 +23,10 @@ type ScriptsConfig struct {
 }
 
 // avoid characters such as "../" to disallow commands like "!../admin/kick"
-var re_cmd = regexp.MustCompile("^!([a-zA-Z0-9]+)( .*)?")
+//var re_cmd = regexp.MustCompile("^!([a-zA-Z0-9]+)( .*)?")
+var re_cmd = regexp.MustCompile("^([a-zA-Z0-9]+)( .*)?")
+var re_bz  = regexp.MustCompile(`https\:\/\/bugzilla.redhat.com\/show_bug.cgi\?id=(\w+)|#`)
+var re_bug = regexp.MustCompile(`bug(.*)`)
 
 func fileExists(cmd string) bool {
 	_, err := os.Stat(cmd)
@@ -46,6 +49,7 @@ func cmdPath(config ScriptsConfig, cmd string, admin bool, private bool) string 
 	}
 	path := fmt.Sprintf("%s/%s.cmd", config.PublicScripts, cmd)
 	if fileExists(path) {
+		fmt.Sprintf("cmdPath %s is not found", path)
 		return path
 	}
 	return ""
@@ -72,6 +76,28 @@ func execCmd(config ScriptsConfig, path string, ev Event) {
 		command.Wait()
 	}
 }
+
+func execCmdArgs(config ScriptsConfig, path string, ev Event, args []string) {
+        log.Printf("Executing [%s]\n", path)
+
+        dynamic_hostname := strings.Split(config.LocalPort, ":")
+
+        command := exec.Command(path,
+                dynamic_hostname[1],
+                ev.Server,
+                ev.Channel,
+                ev.User)
+
+        for _, v := range args {
+                command.Args = append(command.Args, v)
+        }
+
+        err := command.Run()
+        if err == nil {
+                command.Wait()
+        }
+}
+
 
 // creates a new action from what was sent on the admin port
 func netAdminCraftAction(output string) Action {
@@ -148,6 +174,7 @@ func Scripts(chac chan Action, chev chan Event, logger CommandLogger, config Scr
 
 		switch e.Type {
 		case E_PRIVMSG:
+			fmt.Println(e.Data)
 			if m := re_cmd.FindStringSubmatch(e.Data); len(m) > 0 {
 				path := cmdPath(config, m[1],
 					e.AdminCmd,
@@ -157,6 +184,41 @@ func Scripts(chac chan Action, chev chan Event, logger CommandLogger, config Scr
 					go execCmd(config, path, e)
 				}
 			}
+			if m := re_bz.FindStringSubmatch(e.Data); len(m) > 0 {
+				fmt.Println("### bugzilla")
+				fmt.Println("### e.Data:", e.Data)
+				fmt.Println("### m:", m)
+				path := cmdPath(config, "bugzilla",
+					e.AdminCmd,
+					len(e.Channel) == 0)
+				if len(path) > 0 {
+					logger.LogCommand(e.Server, e.Channel, e.User, m[1])
+					go execCmd(config, path, e)
+				}
+			} else if m := re_bug.FindStringSubmatch(e.Data); len(m) > 0 {
+				fmt.Println("### bug")
+				fmt.Println("### e.Data:", e.Data)
+				n := m
+				var res []string
+
+				for {
+					n = regexp.MustCompile(`(\d+)(.*)`).FindStringSubmatch(n[len(n)-1])
+					if len(n) > 1 {
+						res = append(res, n[1])
+					} else {
+						break
+					}
+				}
+
+				fmt.Println("res = ", res)
+				path := cmdPath(config, "bugzilla",
+					e.AdminCmd,
+					len(e.Channel) == 0)
+				if len(path) > 0 {
+					logger.LogCommand(e.Server, e.Channel, e.User, m[1])
+					go execCmdArgs(config, path, e, res)
+				}
+                        }
 		}
 	}
 }
