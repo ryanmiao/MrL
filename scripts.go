@@ -26,7 +26,7 @@ type ScriptsConfig struct {
 //var re_cmd = regexp.MustCompile("^!([a-zA-Z0-9]+)( .*)?")
 var re_cmd = regexp.MustCompile("^([a-zA-Z0-9]+)( .*)?")
 var re_bz  = regexp.MustCompile(`https\:\/\/bugzilla.redhat.com\/show_bug.cgi\?id=(\w+)|#`)
-var re_bug = regexp.MustCompile(`bug(.*)`)
+var re_bug = regexp.MustCompile(`bug(.+)`)
 
 func fileExists(cmd string) bool {
 	_, err := os.Stat(cmd)
@@ -211,6 +211,9 @@ func Scripts(chac chan Action, chev chan Event, logger CommandLogger, config Scr
 				}
 
 				fmt.Println("res = ", res)
+				if len(res) == 0 {
+					continue
+				}
 				path := cmdPath(config, "bugzilla",
 					e.AdminCmd,
 					len(e.Channel) == 0)
