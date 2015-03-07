@@ -47,7 +47,7 @@ func NewServer(conf *ConfigServer, chev chan Event) *Server {
 // Init initialized a new connection to the server, and identifies to bot
 func (serv *Server) Init(chev chan Event, flood_control bool) {
 	destroy := make(chan int)
-	go reader(destroy, serv.Config.Name, serv.Socket, chev)
+	go reader(destroy, serv.Config.Name, serv.Socket, serv.Config.Nickname, chev)
 	go writer(destroy, serv.Socket, serv.SendMeRaw, flood_control)
 	serv.Connected = true
 	serv.SendRawCommand(fmt.Sprintf("NICK %s\r\n", serv.Config.Nickname), PRIORITY_HIGH)
@@ -134,7 +134,7 @@ func (serv *Server) SendRawCommand(cmd string, priority int) {
 	}
 }
 
-func reader(destroy chan int, serv_name string, connection net.Conn, chev chan Event) {
+func reader(destroy chan int, serv_name string, connection net.Conn, botname string, chev chan Event) {
 	r := bufio.NewReader(connection)
 	for {
 		var line string
@@ -149,7 +149,7 @@ func reader(destroy chan int, serv_name string, connection net.Conn, chev chan E
 			return
 		}
 		line = strings.TrimRight(line, "\r\t\n")
-		ev := ExtractEvent(line)
+		ev := ExtractEvent(line, botname)
 		if ev != nil {
 			ev.Server = serv_name
 			log.Printf("\x1b[1;36m%s\x1b[0m", line)

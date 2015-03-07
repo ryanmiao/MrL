@@ -22,7 +22,7 @@ var re_event_kick = regexp.MustCompile("^:([^!]+)![^ ]* KICK ([^ ]+) ([^ ]+) :(.
 var re_event_quit = regexp.MustCompile("^:([^!]+)![^ ]* QUIT :(.*)")
 var re_event_nick = regexp.MustCompile("^:([^!]+)![^ ]* NICK :(.*)")
 
-func ExtractEvent(line string) *Event {
+func ExtractEvent(line string, botname string) *Event {
 	fmt.Println("####ExtractEvent : ", line)
 	if m := re_server_notice.FindStringSubmatch(line); len(m) == 2 {
 		return newEventNOTICE(line, m[1], 0)
@@ -49,7 +49,17 @@ func ExtractEvent(line string) *Event {
 		return newEventPART(line, m[1], m[2])
 	}
 	if m := re_event_privmsg.FindStringSubmatch(line); len(m) == 4 {
-		return newEventPRIVMSG(line, m[1], m[2], m[3])
+		is_cmd := false
+		spliter := [3]string{",", " ", "\t"}
+		for _, s := range spliter {
+			pos := strings.Index(line, s)
+			if pos == len(botname) {
+				is_cmd = true
+				line = line[pos+1:]
+				break
+			}
+		}
+		return newEventPRIVMSG(line, m[1], m[2], m[3], is_cmd)
 	}
 	if m := re_event_kick.FindStringSubmatch(line); len(m) == 5 {
 		return newEventKICK(line, m[1], m[2], m[3], m[4])
@@ -100,7 +110,7 @@ func newEventPART(line string, user string, channel string) *Event {
 	return event
 }
 
-func newEventPRIVMSG(line string, user string, channel string, msg string) *Event {
+func newEventPRIVMSG(line string, user string, channel string, msg string, is_cmd bool) *Event {
 	event := new(Event)
 	event.Raw = line
 	event.Type = E_PRIVMSG
@@ -109,9 +119,9 @@ func newEventPRIVMSG(line string, user string, channel string, msg string) *Even
 		event.Channel = channel
 	}
 	event.User = user
-	fmt.Println("event.User is ", user)
-	fmt.Println("event.Data is ", msg)
-	fmt.Println("event.Channel is ", channel)
+	if is_cmd {
+		event.CmdId = 1
+	}
 	return event
 }
 

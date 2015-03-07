@@ -175,13 +175,16 @@ func Scripts(chac chan Action, chev chan Event, logger CommandLogger, config Scr
 		switch e.Type {
 		case E_PRIVMSG:
 			fmt.Println(e.Data)
-			if m := re_cmd.FindStringSubmatch(e.Data); len(m) > 0 {
-				path := cmdPath(config, m[1],
-					e.AdminCmd,
-					len(e.Channel) == 0)
-				if len(path) > 0 {
-					logger.LogCommand(e.Server, e.Channel, e.User, m[1])
-					go execCmd(config, path, e)
+			fmt.Println("e.CmdId = ", e.CmdId)
+			if e.CmdId != 0 {
+				if m := re_cmd.FindStringSubmatch(e.Data); len(m) > 0 {
+					path := cmdPath(config, m[1],
+						e.AdminCmd,
+						len(e.Channel) == 0)
+					if len(path) > 0 {
+						logger.LogCommand(e.Server, e.Channel, e.User, m[1])
+						go execCmd(config, path, e)
+					}
 				}
 			}
 			if m := re_bz.FindStringSubmatch(e.Data); len(m) > 0 {
