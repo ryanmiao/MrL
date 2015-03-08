@@ -50,16 +50,13 @@ func ExtractEvent(line string, botname string) *Event {
 	}
 	if m := re_event_privmsg.FindStringSubmatch(line); len(m) == 4 {
 		is_cmd := false
-		spliter := [3]string{",", " ", "\t"}
-		for _, s := range spliter {
-			pos := strings.Index(line, s)
-			if pos == len(botname) {
-				is_cmd = true
-				line = line[pos+1:]
-				break
-			}
+		msg := strings.TrimLeft(m[3], " \t")
+		if strings.Index(msg, botname) == 0 {
+			fmt.Println("$$$$ is cmd")
+			is_cmd = true
+			msg = strings.TrimLeft(msg[len(botname):], ", \t")
 		}
-		return newEventPRIVMSG(line, m[1], m[2], m[3], is_cmd)
+		return newEventPRIVMSG(line, m[1], m[2], msg, is_cmd)
 	}
 	if m := re_event_kick.FindStringSubmatch(line); len(m) == 5 {
 		return newEventKICK(line, m[1], m[2], m[3], m[4])
@@ -111,6 +108,7 @@ func newEventPART(line string, user string, channel string) *Event {
 }
 
 func newEventPRIVMSG(line string, user string, channel string, msg string, is_cmd bool) *Event {
+	fmt.Println("#####", line)
 	event := new(Event)
 	event.Raw = line
 	event.Type = E_PRIVMSG
