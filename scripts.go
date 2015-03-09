@@ -24,7 +24,7 @@ type ScriptsConfig struct {
 
 // avoid characters such as "../" to disallow commands like "!../admin/kick"
 //var re_cmd = regexp.MustCompile("^!([a-zA-Z0-9]+)( .*)?")
-var re_cmd = regexp.MustCompile("^([a-zA-Z0-9]+)( .*)?")
+var re_cmd = regexp.MustCompile("^([a-zA-Z0-9]+)(,?:? ?.*)?")
 var re_bz  = regexp.MustCompile(`https\:\/\/bugzilla.redhat.com\/show_bug.cgi\?id=(\w+)|#`)
 var re_bug = regexp.MustCompile(`bug(.+)`)
 
@@ -174,23 +174,19 @@ func Scripts(chac chan Action, chev chan Event, logger CommandLogger, config Scr
 
 		switch e.Type {
 		case E_PRIVMSG:
-			fmt.Println(e.Data)
-			fmt.Println("e.CmdId = ", e.CmdId)
 			if e.CmdId != 0 {
 				if m := re_cmd.FindStringSubmatch(e.Data); len(m) > 0 {
 					path := cmdPath(config, m[1],
 						e.AdminCmd,
 						len(e.Channel) == 0)
+					args := []string{strings.TrimLeft(m[2], ":, \t")}
 					if len(path) > 0 {
 						logger.LogCommand(e.Server, e.Channel, e.User, m[1])
-						go execCmd(config, path, e)
+						go execCmdArgs(config, path, e, args)
 					}
 				}
 			}
 			if m := re_bz.FindStringSubmatch(e.Data); len(m) > 0 {
-				fmt.Println("### bugzilla")
-				fmt.Println("### e.Data:", e.Data)
-				fmt.Println("### m:", m)
 				path := cmdPath(config, "bugzilla",
 					e.AdminCmd,
 					len(e.Channel) == 0)
@@ -199,8 +195,6 @@ func Scripts(chac chan Action, chev chan Event, logger CommandLogger, config Scr
 					go execCmd(config, path, e)
 				}
 			} else if m := re_bug.FindStringSubmatch(e.Data); len(m) > 0 {
-				fmt.Println("### bug")
-				fmt.Println("### e.Data:", e.Data)
 				n := m
 				var res []string
 
@@ -213,7 +207,6 @@ func Scripts(chac chan Action, chev chan Event, logger CommandLogger, config Scr
 					}
 				}
 
-				fmt.Println("res = ", res)
 				if len(res) == 0 {
 					continue
 				}
