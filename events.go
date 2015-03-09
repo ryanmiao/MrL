@@ -49,12 +49,13 @@ func ExtractEvent(line string, botname string) *Event {
 		return newEventPART(line, m[1], m[2])
 	}
 	if m := re_event_privmsg.FindStringSubmatch(line); len(m) == 4 {
+		spliter := ":, \t"
 		is_cmd := false
 		msg := strings.TrimLeft(m[3], " \t")
-		if strings.Index(msg, botname) == 0 {
+		if strings.Index(msg, botname) == 0 && strings.IndexByte(spliter, msg[len(botname)]) != -1 {
 			fmt.Println("$$$$ is cmd")
 			is_cmd = true
-			msg = strings.TrimLeft(msg[len(botname):], ", \t")
+			msg = strings.TrimLeft(msg[len(botname):], spliter)
 		}
 		return newEventPRIVMSG(line, m[1], m[2], msg, is_cmd)
 	}
