@@ -14,39 +14,35 @@ user = sys.argv[4]
 
 url = "https://bugzilla.redhat.com/show_bug.cgi?id="
 
+def getField(soup, field):
+	href = "%s%s" % ("page.cgi?id=fields.html#", field)
+	for i in soup.find_all('th', {"class" : "field_label"}):
+                f = i.find('a', {"href" : href})
+                if f != None:
+                        break
+        return f
+
 def getReporter(soup):
-	for i in soup.find_all('th', {"class":"field_label"}):
-		m = i.find('a', {"href":"page.cgi?id=fields.html#reporter"})
-		if m != None:
-			break
+	m = getField(soup, "reporter")
 	if m == None:
 		return ""
 	return m.parent.findNext('td').find('span').get_text().encode('utf-8').strip()
 
 def getAssignee(soup):
-	for i in soup.find_all('th', {"class":"field_label"}):
-                m = i.find('a', {"href":"page.cgi?id=fields.html#assigned_to"})
-                if m != None:
-                        break
+	m = getField(soup, "assigned_to")
         if m == None:
                 return ""
 	return m.parent.findNext('td').find('span').get_text().encode('utf-8').strip()
 
 def getStatus(soup):
-	for i in soup.find_all('th', {"class":"field_label"}):
-                m = i.find('a', {"href":"page.cgi?id=fields.html#bug_status"})
-                if m != None:
-                        break
+	m = getField(soup, "bug_status")
         if m == None:
                 return ""
         l = m.parent.findNext('td').find('span').get_text().encode('utf-8').strip().split()
 	return string.join(l)
 
 def getPriSev(soup):
-	for i in soup.find_all('th', {"class":"field_label"}):
-                m = i.find('a', {"href":"page.cgi?id=fields.html#priority"})
-                if m != None:
-                        break
+	m = getField(soup, "priority")
         if m == None:
                 return ""
 	l = m.findNext('td').get_text().encode('utf-8').split()
@@ -59,13 +55,13 @@ for bugId in sys.argv[5:]:
 	soup = BeautifulSoup(urllib2.urlopen(bugUrl))
 	output = soup.title.string
 	if output == "Access Denied":
-		cmd = "echo \'%s 1 PRIVMSG %s :Bug %s is unaccessible\' | nc 127.0.0.1 %s" % (server, user, bugId, port)
+		cmd = "echo \'%s 1 PRIVMSG %s :Bug %s is unaccessible\' | nc 127.0.0.1 %s" % (server, channel, bugId, port)
 	elif output == "Invalid Bug ID":
-		cmd = "echo \'%s 1 PRIVMSG %s :Bug %s is invalid\' | nc 127.0.0.1 %s" % (server, user, bugId, port)
+		cmd = "echo \'%s 1 PRIVMSG %s :Bug %s is invalid\' | nc 127.0.0.1 %s" % (server, channel, bugId, port)
 	else:
 		status = getStatus(soup)
 		pri = getPriSev(soup)
 		assignee = getAssignee(soup)
 		reporter = getReporter(soup)
-		cmd = "echo \'%s 1 PRIVMSG %s :%s %s, %s, %s, %s, %s\' | nc 127.0.0.1 %s" % (server, user, bugUrl, output, status, pri, reporter, assignee, port)
+		cmd = "echo \'%s 1 PRIVMSG %s :%s %s, %s, %s, %s, %s\' | nc 127.0.0.1 %s" % (server, channel, bugUrl, output, status, pri, reporter, assignee, port)
 	os.system(cmd.encode('utf-8'))
