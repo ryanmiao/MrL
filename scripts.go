@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"bytes"
 )
 
 type CommandLogger interface {
@@ -60,6 +61,7 @@ func execCmd(config ScriptsConfig, path string, ev Event) {
 
 	in_params := strings.Split(ev.Data, " ")
 	dynamic_hostname := strings.Split(config.LocalPort, ":")
+        var stderr bytes.Buffer
 
 	command := exec.Command(path,
 		dynamic_hostname[1],
@@ -71,16 +73,20 @@ func execCmd(config ScriptsConfig, path string, ev Event) {
 		command.Args = append(command.Args, v)
 	}
 
+        command.Stderr = &stderr
 	err := command.Run()
-	if err == nil {
-		command.Wait()
-	}
+        if err != nil {
+                log.Printf("\x1b[1;31mError:\n%s\n%s\x1b[0m\n", stderr.String(), err)
+        } else {
+                log.Printf("Success to execute\n")
+        }
 }
 
 func execCmdArgs(config ScriptsConfig, path string, ev Event, args []string) {
         log.Printf("Executing [%s]\n", path)
 
         dynamic_hostname := strings.Split(config.LocalPort, ":")
+	var stderr bytes.Buffer
 
         command := exec.Command(path,
                 dynamic_hostname[1],
@@ -92,10 +98,13 @@ func execCmdArgs(config ScriptsConfig, path string, ev Event, args []string) {
                 command.Args = append(command.Args, v)
         }
 
+	command.Stderr = &stderr
         err := command.Run()
-        if err == nil {
-                command.Wait()
-        }
+        if err != nil {
+                log.Printf("\x1b[1;31mError:\n%s\n%s\x1b[0m\n", stderr.String(), err)
+        } else {
+                log.Printf("Success to execute\n")
+	}
 }
 
 
