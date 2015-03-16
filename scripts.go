@@ -210,7 +210,10 @@ func Scripts(chac chan Action, chev chan Event, logger CommandLogger, config Scr
 				for {
 					n = regexp.MustCompile(`(\d+)(.*)`).FindStringSubmatch(n[len(n)-1])
 					if len(n) > 1 {
-						res = append(res, n[1])
+						_, err := strconv.Atoi(n[1])
+						if err == nil {
+							res = append(res, n[1])
+						}
 					} else {
 						break
 					}
